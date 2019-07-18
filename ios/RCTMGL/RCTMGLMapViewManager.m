@@ -22,6 +22,34 @@
 @interface RCTMGLMapViewManager() <MGLMapViewDelegate>
 @end
 
+#define UISHORT_TAP_MAX_DELAY 0.2
+@interface UIShortTapGestureRecognizer : UITapGestureRecognizer
+
+@end
+
+@implementation UIShortTapGestureRecognizer
+
+- (void)touchesBegan:(NSSet *)touches withEvent:(UIEvent *)event
+{
+    [super touchesBegan:touches withEvent:event];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(UISHORT_TAP_MAX_DELAY * NSEC_PER_SEC)), dispatch_get_main_queue(), ^
+    {
+        // Enough time has passed and the gesture was not recognized -> It has failed.
+        if  (self.state != UIGestureRecognizerStateRecognized)
+        {
+            self.state = UIGestureRecognizerStateFailed;
+        }
+    });
+}
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer
+{
+  return TRUE;
+}
+
+@end
+
+
 @implementation RCTMGLMapViewManager
 
 // prevents SDK from crashing and cluttering logs
@@ -37,32 +65,17 @@ RCT_EXPORT_MODULE(RCTMGLMapView)
 
 - (UIView *)view
 {
-    RCTMGLMapView *mapView = [[RCTMGLMapView alloc] initWithFrame:RCT_MAPBOX_MIN_MAP_FRAME];
-    mapView.delegate = self;
+  RCTMGLMapView *mapView = [[RCTMGLMapView alloc] initWithFrame:RCT_MAPBOX_MIN_MAP_FRAME];
+  mapView.delegate = self;
 
-    // setup map gesture recongizers
-    UITapGestureRecognizer *doubleTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:nil];
-    doubleTap.numberOfTapsRequired = 2;
-    
-    UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(didTapMap:)];
-    [tap requireGestureRecognizerToFail:doubleTap];
-    
-    UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(didLongPressMap:)];
-    
-    // this allows the internal annotation gestures to take precedents over the map tap gesture
-    for (int i = 0; i < mapView.gestureRecognizers.count; i++) {
-        UIGestureRecognizer *gestuerReconginer = mapView.gestureRecognizers[i];
-        
-        if ([gestuerReconginer isKindOfClass:[UITapGestureRecognizer class]]) {
-            [tap requireGestureRecognizerToFail:gestuerReconginer];
-        }
-    }
-    
-    [mapView addGestureRecognizer:doubleTap];
-    [mapView addGestureRecognizer:tap];
-    [mapView addGestureRecognizer:longPress];
-    
-    return mapView;
+  UIShortTapGestureRecognizer *tap = [[UIShortTapGestureRecognizer alloc] initWithTarget:self action:@selector(didTapMap:)];
+
+  UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(didLongPressMap:)];
+
+  [mapView addGestureRecognizer:tap];
+  [mapView addGestureRecognizer:longPress];
+
+  return mapView;
 }
 
 #pragma mark - React View Props
