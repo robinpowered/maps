@@ -26,6 +26,7 @@ public class RCTMGLAndroidTextureMapViewManager extends RCTMGLMapViewManager {
     protected RCTMGLAndroidTextureMapView createViewInstance(ThemedReactContext themedReactContext) {
         MapboxMapOptions options = new MapboxMapOptions();
         options.textureMode(true);
+        options.translucentTextureSurface(true);
         return new RCTMGLAndroidTextureMapView(themedReactContext, this, options);
     }
 }
