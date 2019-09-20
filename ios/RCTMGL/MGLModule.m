@@ -11,6 +11,7 @@
 #import "MGLOfflineModule.h"
 #import "CameraMode.h"
 #import "RCTMGLSource.h"
+#import "MGLCustomHeaders.h"
 @import Mapbox;
 
 @implementation MGLModule
@@ -42,7 +43,7 @@ RCT_EXPORT_MODULE();
     [eventTypes setObject:RCT_MAPBOX_REGION_DID_CHANGE forKey:@"RegionDidChange"];
     [eventTypes setObject:RCT_MAPBOX_WILL_START_LOADING_MAP forKey:@"WillStartLoadingMap"];
     [eventTypes setObject:RCT_MAPBOX_DID_FINISH_LOADING_MAP forKey:@"DidFinishLoadingMap"];
-    [eventTypes setObject:RCT_MAPBOX_DID_FAIL_LOADING_MAP forKey:@"DidFailLaodingMap"];
+    [eventTypes setObject:RCT_MAPBOX_DID_FAIL_LOADING_MAP forKey:@"DidFailLoadingMap"];
     [eventTypes setObject:RCT_MAPBOX_WILL_START_RENDERING_FRAME forKey:@"WillStartRenderingFrame"];
     [eventTypes setObject:RCT_MAPBOX_DID_FINSIH_RENDERING_FRAME forKey:@"DidFinishRenderingFrame"];
     [eventTypes setObject:RCT_MAPBOX_DID_FINISH_RENDERING_FRAME_FULLY forKey:@"DidFinishRenderingFrameFully"];
@@ -239,6 +240,16 @@ RCT_EXPORT_MODULE();
 RCT_EXPORT_METHOD(setAccessToken:(NSString *)accessToken)
 {
     [MGLAccountManager setAccessToken:accessToken];
+}
+
+RCT_EXPORT_METHOD(addCustomHeader:(NSString *)headerName forHeaderValue:(NSString *) headerValue)
+{
+    [MGLCustomHeaders.sharedInstance addHeader:headerValue forHeaderName:headerName];
+}
+
+RCT_EXPORT_METHOD(removeCustomHeader:(NSString *)headerName)
+{
+    [MGLCustomHeaders.sharedInstance removeHeader:headerName];
 }
 
 RCT_EXPORT_METHOD(getAccessToken:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)

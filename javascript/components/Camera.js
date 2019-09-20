@@ -2,11 +2,8 @@ import React from 'react';
 import PropTypes from 'prop-types';
 import {NativeModules, requireNativeComponent} from 'react-native';
 
-import locationManager from '../modules/location/locationManager';
-import {isNumber, toJSONString, viewPropTypes, existenceChange} from '../utils';
+import {toJSONString, viewPropTypes, existenceChange} from '../utils';
 import * as geoUtils from '../utils/geoUtils';
-
-import NativeBridgeComponent from './NativeBridgeComponent';
 
 const MapboxGL = NativeModules.MGLModule;
 
@@ -27,7 +24,6 @@ const SettingsPropTypes = {
    * Pitch on map
    */
   pitch: PropTypes.number,
-
 
   bounds: PropTypes.shape({
     /**
@@ -67,7 +63,7 @@ const SettingsPropTypes = {
   zoomLevel: PropTypes.number,
 };
 
-class Camera extends NativeBridgeComponent {
+class Camera extends React.Component {
   static propTypes = {
     ...viewPropTypes,
 
@@ -98,6 +94,9 @@ class Camera extends NativeBridgeComponent {
 
     // position
     alignment: PropTypes.arrayOf(PropTypes.number),
+
+    // Triggered when the
+    onUserTrackingModeChange: PropTypes.func,
   };
 
   static defaultProps = {
@@ -112,7 +111,7 @@ class Camera extends NativeBridgeComponent {
     Ease: 'easeTo',
   };
 
-  componentWillReceiveProps(nextProps) {
+  UNSAFE_componentWillReceiveProps(nextProps) {
     this._handleCameraChange(this.props, nextProps);
   }
 
@@ -230,10 +229,10 @@ class Camera extends NativeBridgeComponent {
       cB.ne[1] !== nB.ne[1] ||
       cB.sw[0] !== nB.sw[0] ||
       cB.sw[1] !== nB.sw[1] ||
-      cB.paddingTop != nB.paddingTop ||
-      cB.paddingLeft != nB.paddingLeft ||
-      cB.paddingRight != nB.paddingRight ||
-      cB.paddingBottom != nB.paddingBottom
+      cB.paddingTop !== nB.paddingTop ||
+      cB.paddingLeft !== nB.paddingLeft ||
+      cB.paddingRight !== nB.paddingRight ||
+      cB.paddingBottom !== nB.paddingBottom
     );
   }
 
@@ -291,7 +290,7 @@ class Camera extends NativeBridgeComponent {
         ...pad,
       },
       animationDuration,
-      animationMode: Camera.Mode.Move,
+      animationMode: Camera.Mode.Ease,
     });
   }
 
