@@ -2,6 +2,7 @@ package com.mapbox.rctmgl.components.mapview;
 
 import android.content.Context;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.PointF;
 import android.graphics.RectF;
 import android.location.Location;
@@ -9,6 +10,7 @@ import android.os.Handler;
 import android.support.annotation.NonNull;
 import android.util.DisplayMetrics;
 import android.util.Log;
+import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.MotionEvent;
@@ -16,6 +18,7 @@ import android.view.MotionEvent;
 import com.facebook.react.bridge.LifecycleEventListener;
 import com.facebook.react.bridge.ReactContext;
 import com.facebook.react.bridge.ReadableArray;
+import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.WritableArray;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.bridge.WritableNativeArray;
@@ -24,7 +27,10 @@ import com.mapbox.geojson.Feature;
 import com.mapbox.geojson.FeatureCollection;
 import com.mapbox.mapboxsdk.annotations.Marker;
 import com.mapbox.mapboxsdk.maps.Style;
-import com.mapbox.mapboxsdk.plugins.markerview.MarkerViewManager;
+import com.mapbox.mapboxsdk.plugins.annotation.Symbol;
+import com.mapbox.mapboxsdk.plugins.annotation.SymbolManager;
+import com.mapbox.mapboxsdk.plugins.annotation.OnSymbolDragListener;
+import com.mapbox.mapboxsdk.plugins.annotation.OnSymbolClickListener;
 import com.mapbox.mapboxsdk.camera.CameraPosition;
 import com.mapbox.mapboxsdk.camera.CameraUpdate;
 import com.mapbox.mapboxsdk.geometry.LatLng;
@@ -39,10 +45,11 @@ import com.mapbox.mapboxsdk.style.layers.Layer;
 import com.mapbox.android.gestures.MoveGestureDetector;
 import com.mapbox.rctmgl.components.AbstractMapFeature;
 import com.mapbox.rctmgl.components.annotation.RCTMGLCallout;
-import com.mapbox.rctmgl.components.annotation.RCTMGLCalloutAdapter;
 import com.mapbox.rctmgl.components.annotation.RCTMGLPointAnnotation;
 import com.mapbox.rctmgl.components.camera.RCTMGLCamera;
 import com.mapbox.rctmgl.components.mapview.helpers.CameraChangeTracker;
+import com.mapbox.rctmgl.components.styles.layers.RCTLayer;
+import com.mapbox.rctmgl.components.styles.layers.RCTMGLSymbolLayer;
 import com.mapbox.rctmgl.components.styles.light.RCTMGLLight;
 import com.mapbox.rctmgl.components.styles.sources.RCTMGLShapeSource;
 import com.mapbox.rctmgl.components.styles.sources.RCTSource;
@@ -54,8 +61,10 @@ import com.mapbox.rctmgl.events.constants.EventTypes;
 import com.mapbox.rctmgl.utils.BitmapUtils;
 import com.mapbox.rctmgl.utils.GeoJSONUtils;
 import com.mapbox.rctmgl.utils.GeoViewport;
+import com.mapbox.rctmgl.R;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -73,7 +82,7 @@ public class RCTMGLMapView extends MapView implements OnMapReadyCallback, Mapbox
         MapView.OnDidFailLoadingMapListener, MapView.OnDidFinishLoadingMapListener,
         MapView.OnWillStartRenderingFrameListener, MapView.OnDidFinishRenderingFrameListener,
         MapView.OnWillStartRenderingMapListener, MapView.OnDidFinishRenderingMapListener,
-        MapView.OnDidFinishLoadingStyleListener, MapboxMap.OnMarkerClickListener, MapView.OnStyleImageMissingListener {
+        MapView.OnDidFinishLoadingStyleListener, MapView.OnStyleImageMissingListener {
     public static final String LOG_TAG = RCTMGLMapView.class.getSimpleName();
 
     private RCTMGLMapViewManager mManager;
@@ -102,11 +111,14 @@ public class RCTMGLMapView extends MapView implements OnMapReadyCallback, Mapbox
     private Boolean mPitchEnabled;
     private Boolean mRotateEnabled;
     private Boolean mAttributionEnabled;
+    private Integer mAttributionGravity;
+    private int[] mAttributionMargin;
     private Boolean mLogoEnabled;
     private Boolean mCompassEnabled;
+    private ReadableMap mCompassViewMargins;
     private Boolean mZoomEnabled;
 
-    private MarkerViewManager markerViewManager;
+    private SymbolManager symbolManager;
 
     private long mActiveMarkerID = -1;
 
@@ -114,11 +126,12 @@ public class RCTMGLMapView extends MapView implements OnMapReadyCallback, Mapbox
 
     private HashSet<String> mHandledMapChangedEvents = null;
 
+    private boolean mAnnotationClicked = false;
+
     public RCTMGLMapView(Context context, RCTMGLMapViewManager manager, MapboxMapOptions options) {
         super(context, options);
 
         mContext = context;
-
         onCreate(null);
         onStart();
         onResume();
@@ -187,6 +200,8 @@ public class RCTMGLMapView extends MapView implements OnMapReadyCallback, Mapbox
             RCTMGLCamera camera = (RCTMGLCamera) childView;
             mCamera = camera;
             feature = (AbstractMapFeature) childView;
+        } else if (childView instanceof RCTLayer) {
+            feature = (RCTLayer) childView;
         } else if (childView instanceof ViewGroup) {
             ViewGroup children = (ViewGroup) childView;
 
@@ -196,7 +211,7 @@ public class RCTMGLMapView extends MapView implements OnMapReadyCallback, Mapbox
         }
 
         if (feature != null) {
-            if (mMap != null) {
+            if (mQueuedFeatures == null) {
                 feature.addToMap(this);
                 mFeatures.add(childPosition, feature);
             } else {
@@ -333,6 +348,10 @@ public class RCTMGLMapView extends MapView implements OnMapReadyCallback, Mapbox
         return mMap;
     }
 
+    public SymbolManager getSymbolManager() {
+        return symbolManager;
+    }
+
     public interface FoundLayerCallback {
         public void found(Layer layer);
     }
@@ -373,26 +392,18 @@ public class RCTMGLMapView extends MapView implements OnMapReadyCallback, Mapbox
 
         reflow();
 
-        mMap.setOnMarkerClickListener(this);
-
-        markerViewManager = new MarkerViewManager(this, mMap);
-        mMap.setInfoWindowAdapter(new RCTMGLCalloutAdapter(this));
-
-        mMap.addOnMapClickListener(this);
-        mMap.addOnMapLongClickListener(this);
+        mMap.getStyle(new Style.OnStyleLoaded() {
+            @Override
+            public void onStyleLoaded(@NonNull Style style) {
+                createSymbolManager(style);
+                setUpImage(style);
+                addQueuedFeatures();
+            }
+        });
 
         updatePreferredFramesPerSecond();
         updateInsets();
         updateUISettings();
-
-        if (mQueuedFeatures.size() > 0) {
-            for (int i = 0; i < mQueuedFeatures.size(); i++) {
-                AbstractMapFeature feature = mQueuedFeatures.get(i);
-                feature.addToMap(this);
-                mFeatures.add(feature);
-            }
-            mQueuedFeatures = null;
-        }
 
         mMap.addOnCameraIdleListener(new MapboxMap.OnCameraIdleListener() {
             @Override
@@ -438,11 +449,62 @@ public class RCTMGLMapView extends MapView implements OnMapReadyCallback, Mapbox
         });
     }
 
+    public void createSymbolManager(Style style) {
+        symbolManager = new SymbolManager(this, mMap, style);
+        symbolManager.setIconAllowOverlap(true);
+        symbolManager.addClickListener(new OnSymbolClickListener() {
+            @Override
+            public void onAnnotationClick(Symbol symbol) {
+                onMarkerClick(symbol);
+            }
+        });
+        symbolManager.addDragListener(new OnSymbolDragListener() {
+            @Override
+            public void onAnnotationDragStarted(Symbol symbol) {
+                mAnnotationClicked = true;
+                final long selectedMarkerID = symbol.getId();
+                RCTMGLPointAnnotation annotation = getPointAnnotationByMarkerID(selectedMarkerID);
+                if (annotation != null) {
+                    annotation.onDragStart();
+                }
+            }
+
+            @Override
+            // Left empty on purpose
+            public void onAnnotationDrag(Symbol symbol) {
+
+            }
+
+            @Override
+            public void onAnnotationDragFinished(Symbol symbol) {
+                mAnnotationClicked = false;
+                final long selectedMarkerID = symbol.getId();
+                RCTMGLPointAnnotation annotation = getPointAnnotationByMarkerID(selectedMarkerID);
+                if (annotation != null) {
+                    annotation.onDragEnd();
+                }
+            }
+        });
+        mMap.addOnMapClickListener(this);
+        mMap.addOnMapLongClickListener(this);
+    }
+
+    public void addQueuedFeatures() {
+        if (mQueuedFeatures.size() > 0) {
+            for (int i = 0; i < mQueuedFeatures.size(); i++) {
+                AbstractMapFeature feature = mQueuedFeatures.get(i);
+                feature.addToMap(this);
+                mFeatures.add(feature);
+            }
+            mQueuedFeatures = null;
+        }
+    }
+
     @Override
     public boolean onTouchEvent(MotionEvent ev) {
         boolean result = super.onTouchEvent(ev);
 
-        if (result) {
+        if (result && mScrollEnabled) {
             requestDisallowInterceptTouchEvent(true);
         }
 
@@ -458,19 +520,8 @@ public class RCTMGLMapView extends MapView implements OnMapReadyCallback, Mapbox
 
     @Override
     public boolean onMapClick(@NonNull LatLng point) {
-        boolean isEventCaptured = false;
-
-        if (mActiveMarkerID != -1) {
-            for (String key : mPointAnnotations.keySet()) {
-                RCTMGLPointAnnotation annotation = mPointAnnotations.get(key);
-
-                if (mActiveMarkerID == annotation.getMapboxID()) {
-                    isEventCaptured = deselectAnnotation(annotation);
-                }
-            }
-        }
-
-        if (isEventCaptured) {
+        if (mAnnotationClicked) {
+            mAnnotationClicked = false;
             return true;
         }
 
@@ -514,15 +565,19 @@ public class RCTMGLMapView extends MapView implements OnMapReadyCallback, Mapbox
 
     @Override
     public boolean onMapLongClick(@NonNull LatLng point) {
+        if (mAnnotationClicked) {
+            mAnnotationClicked = false;
+            return true;
+        }
         PointF screenPoint = mMap.getProjection().toScreenLocation(point);
         MapClickEvent event = new MapClickEvent(this, point, screenPoint, EventTypes.MAP_LONG_CLICK);
         mManager.handleEvent(event);
         return false;
     }
 
-    @Override
-    public boolean onMarkerClick(@NonNull Marker marker) {
-        final long selectedMarkerID = marker.getId();
+    public void onMarkerClick(@NonNull Symbol symbol) {
+        mAnnotationClicked = true;
+        final long selectedMarkerID = symbol.getId();
 
         RCTMGLPointAnnotation activeAnnotation = null;
         RCTMGLPointAnnotation nextActiveAnnotation = null;
@@ -530,11 +585,11 @@ public class RCTMGLMapView extends MapView implements OnMapReadyCallback, Mapbox
         for (String key : mPointAnnotations.keySet()) {
             RCTMGLPointAnnotation annotation = mPointAnnotations.get(key);
             final long curMarkerID = annotation.getMapboxID();
-
-            if (selectedMarkerID == curMarkerID) {
-                nextActiveAnnotation = annotation;
-            } else if (mActiveMarkerID == curMarkerID) {
+            if (mActiveMarkerID == curMarkerID) {
                 activeAnnotation = annotation;
+            }
+            if (selectedMarkerID == curMarkerID && mActiveMarkerID != curMarkerID) {
+                nextActiveAnnotation = annotation;
             }
         }
 
@@ -546,38 +601,16 @@ public class RCTMGLMapView extends MapView implements OnMapReadyCallback, Mapbox
             selectAnnotation(nextActiveAnnotation);
         }
 
-        return true;
     }
 
     public void selectAnnotation(RCTMGLPointAnnotation annotation) {
-        final long id = annotation.getMapboxID();
-
-        if (id != mActiveMarkerID) {
-            final Marker marker = annotation.getMarker();
-            mMap.selectMarker(marker);
-            annotation.onSelect(true);
-            mActiveMarkerID = id;
-
-            RCTMGLCallout calloutView = annotation.getCalloutView();
-            if (!marker.isInfoWindowShown() && calloutView != null) {
-                marker.showInfoWindow(mMap, this);
-            }
-        }
+        mActiveMarkerID = annotation.getMapboxID();
+        annotation.onSelect(true);
     }
 
-    public boolean deselectAnnotation(RCTMGLPointAnnotation annotation) {
-        Marker marker = annotation.getMarker();
-
-        RCTMGLCallout calloutView = annotation.getCalloutView();
-        if (calloutView != null) {
-            marker.hideInfoWindow();
-        }
-
-        mMap.deselectMarker(marker);
+    public void deselectAnnotation(RCTMGLPointAnnotation annotation) {
         mActiveMarkerID = -1;
         annotation.onDeselect();
-
-        return calloutView != null;
     }
 
     @Override
@@ -709,8 +742,47 @@ public class RCTMGLMapView extends MapView implements OnMapReadyCallback, Mapbox
         updateUISettings();
     }
 
+    public void setReactCompassViewMargins(ReadableMap compassViewMargins) {
+        mCompassViewMargins = compassViewMargins;
+        updateUISettings();
+    }
+
     public void setReactAttributionEnabled(boolean attributionEnabled) {
         mAttributionEnabled = attributionEnabled;
+        updateUISettings();
+    }
+
+    public void setReactAttributionPosition(ReadableMap position) {
+        if (position == null) {
+            // reset from explicit to default
+            if (mAttributionGravity != null) {
+                MapboxMapOptions defaultOptions = MapboxMapOptions.createFromAttributes(mContext);
+                mAttributionGravity = defaultOptions.getAttributionGravity();
+                mAttributionMargin = Arrays.copyOf(defaultOptions.getAttributionMargins(), 4);
+                updateUISettings();
+            }
+            return;
+        }
+        mAttributionGravity = Gravity.NO_GRAVITY;
+        if (position.hasKey("left")) {
+            mAttributionGravity |= Gravity.START;
+        }
+        if (position.hasKey("right")) {
+            mAttributionGravity |= Gravity.END;
+        }
+        if (position.hasKey("top")) {
+            mAttributionGravity |= Gravity.TOP;
+        }
+        if (position.hasKey("bottom")) {
+            mAttributionGravity |= Gravity.BOTTOM;
+        }
+        float density = mContext.getResources().getDisplayMetrics().density;
+        mAttributionMargin = new int[]{
+            position.hasKey("left") ? (int) density * position.getInt("left") : 0,
+            position.hasKey("top") ? (int) density * position.getInt("top") : 0,
+            position.hasKey("right") ? (int) density * position.getInt("right") : 0,
+            position.hasKey("bottom") ? (int) density * position.getInt("bottom") : 0
+        };
         updateUISettings();
     }
 
@@ -841,6 +913,9 @@ public class RCTMGLMapView extends MapView implements OnMapReadyCallback, Mapbox
 
         if (mScrollEnabled != null && uiSettings.isScrollGesturesEnabled() != mScrollEnabled) {
             uiSettings.setScrollGesturesEnabled(mScrollEnabled);
+            if (!mScrollEnabled) {
+                mMap.getGesturesManager().getMoveGestureDetector().interrupt();
+            }
         }
 
         if (mPitchEnabled != null && uiSettings.isTiltGesturesEnabled() != mPitchEnabled) {
@@ -849,10 +924,32 @@ public class RCTMGLMapView extends MapView implements OnMapReadyCallback, Mapbox
 
         if (mRotateEnabled != null && uiSettings.isRotateGesturesEnabled() != mRotateEnabled) {
             uiSettings.setRotateGesturesEnabled(mRotateEnabled);
+            if (!mRotateEnabled) {
+                mMap.getGesturesManager().getRotateGestureDetector().interrupt();
+            }
         }
 
         if (mAttributionEnabled != null && uiSettings.isAttributionEnabled() != mAttributionEnabled) {
             uiSettings.setAttributionEnabled(mAttributionEnabled);
+        }
+
+        if (mAttributionGravity != null && uiSettings.getAttributionGravity() != mAttributionGravity) {
+            uiSettings.setAttributionGravity(mAttributionGravity);
+        }
+
+        if (mAttributionMargin != null &&
+                (uiSettings.getAttributionMarginLeft() != mAttributionMargin[0] ||
+                        uiSettings.getAttributionMarginTop() != mAttributionMargin[1] ||
+                        uiSettings.getAttributionMarginRight() != mAttributionMargin[2] ||
+                        uiSettings.getAttributionMarginBottom() != mAttributionMargin[3]
+                )
+        ) {
+            uiSettings.setAttributionMargins(
+                mAttributionMargin[0],
+                mAttributionMargin[1],
+                mAttributionMargin[2],
+                mAttributionMargin[3]
+            );
         }
 
         if (mLogoEnabled != null && uiSettings.isLogoEnabled() != mLogoEnabled) {
@@ -863,8 +960,19 @@ public class RCTMGLMapView extends MapView implements OnMapReadyCallback, Mapbox
             uiSettings.setCompassEnabled(mCompassEnabled);
         }
 
+        if (mCompassViewMargins != null && uiSettings.isCompassEnabled()) {
+            int pixelDensity = (int)getResources().getDisplayMetrics().density;
+
+            int xMargin = mCompassViewMargins.getInt("x") * pixelDensity;
+            int yMargin = mCompassViewMargins.getInt("y") * pixelDensity;
+            uiSettings.setCompassMargins(xMargin, yMargin, xMargin, yMargin);
+        }
+
         if (mZoomEnabled != null && uiSettings.isZoomGesturesEnabled() != mZoomEnabled) {
             uiSettings.setZoomGesturesEnabled(mZoomEnabled);
+            if (!mZoomEnabled) {
+                mMap.getGesturesManager().getStandardScaleGestureDetector().interrupt();
+            }
         }
     }
 
@@ -1102,5 +1210,15 @@ public class RCTMGLMapView extends MapView implements OnMapReadyCallback, Mapbox
         positionProperties.putDouble("timestamp", location.getTime());
         return positionProperties;
     }
+
+    /**
+    * Adds the marker image to the map for use as a SymbolLayer icon
+    */
+    private void setUpImage(@NonNull Style loadedStyle) {
+        loadedStyle.addImage("MARKER_IMAGE_ID", BitmapFactory.decodeResource(
+            this.getResources(), R.drawable.red_marker)
+        );
+    }
+
 
 }

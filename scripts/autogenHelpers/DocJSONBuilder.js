@@ -218,7 +218,9 @@ class DocJSONBuilder {
             return;
           }
 
-          results[fileName] = docgen.parse(content);
+          results[fileName] = docgen.parse(content, undefined, undefined, {
+            filename: fileName,
+          });
           this.postprocess(results[fileName], fileName);
 
           next();
@@ -231,7 +233,7 @@ class DocJSONBuilder {
   generateModulesTask(results, filePath) {
     return new Promise((resolve, reject) => {
       exec(
-        `documentation build ${MODULES_PATH} -f json`,
+        `npx documentation build ${MODULES_PATH} -f json`,
         (err, stdout, stderr) => {
           if (err || stderr) {
             reject(err || stderr);

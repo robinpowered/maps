@@ -1,7 +1,7 @@
 {
   "name": "@react-native-mapbox-gl/maps",
   "description": "A Mapbox GL react native module for creating custom maps",
-  "version": "7.0.4",
+  "version": "7.0.8",
   "publishConfig": {
     "access": "public"
   },
@@ -26,8 +26,7 @@
     "unittest": "jest --coverage --verbose",
     "unittest:single": "jest --testNamePattern",
     "format": "npm run lint -- --fix",
-    "lint": "./node_modules/eslint/bin/eslint.js ./javascript/** ./example/src/** ./__tests__/**",
-    "precommit": "lint-staged"
+    "lint": "./node_modules/eslint/bin/eslint.js ./javascript/** ./example/src/** ./__tests__/**"
   },
   "peerDependencies": {
     "prop-types": ">=15.5.8",
@@ -48,9 +47,11 @@
     "@babel/plugin-transform-flow-strip-types": "7.4.4",
     "@babel/plugin-transform-runtime": "7.5.0",
     "@babel/runtime": "7.5.0",
+    "@types/geojson": "^7946.0.7",
     "babel-core": "7.0.0-bridge.0",
     "babel-eslint": "^10.0.1",
     "babel-jest": "24.8.0",
+    "documentation": "12.1.2",
     "ejs": "^2.5.7",
     "ejs-lint": "^0.3.0",
     "eslint": "^6.0.0",
@@ -64,7 +65,7 @@
     "eslint-plugin-react": "7.13.0",
     "eslint-plugin-react-native": "^3.6.0",
     "flow-bin": "^0.95.1",
-    "husky": "^0.14.3",
+    "husky": "3.0.5",
     "jest": "24.8.0",
     "jest-cli": "^24.8.0",
     "lint-staged": "^8.2.0",
@@ -73,7 +74,7 @@
     "prettier": "^1.11.1",
     "react": "16.8.6",
     "react-docgen": "^5.0.0-beta.1",
-    "react-native": "0.59.0",
+    "react-native": "0.59.10",
     "react-test-renderer": "16.8.3"
   },
   "jest": {
@@ -90,6 +91,11 @@
       "__tests__/__mocks__"
     ]
   },
+  "husky": {
+    "hooks": {
+      "pre-commit": "lint-staged && npm run generate"
+    }
+  },
   "lint-staged": {
     "linters": {
       "*.js": [
@@ -100,10 +106,5 @@
     "ignore": [
       "**/scripts/**/*.js"
     ]
-  },
-  "rnpm": {
-    "android": {
-      "sourceDir": "./android/rctmgl"
-    }
   }
 }

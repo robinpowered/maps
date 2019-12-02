@@ -18,9 +18,9 @@ commit the changes and push them to a fork for creating a pull request.
 1. If you add a feature, make sure you add it to the documentation
 1. If you add an objective-c or java method, make sure you update the declaration file: `index.d.ts`.
 
-
 ## Documentation
 
-1. Documentation is auto-generated from code blocks and comments. To generate documentation:
-  1. `npm install -g documentation` to install documentation generator
-  1. `npm run generate` to generate updated documentation
+Documentation is generated from code blocks and comments.
+It will be auto-generated when you commit changes.
+If any changes are generated from your edits, the changed files will need to be added using `git add` before attempting the commit again.
+To manually generate the changes, run `npm run generate`.

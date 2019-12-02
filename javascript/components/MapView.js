@@ -106,6 +106,16 @@ class MapView extends NativeBridgeComponent(React.Component) {
     attributionEnabled: PropTypes.bool,
 
     /**
+     * Adds attribution offset, e.g. `{top: 8, left: 8}` will put attribution button in top-left corner of the map
+     */
+    attributionPosition: PropTypes.oneOfType([
+      PropTypes.shape({top: PropTypes.number, left: PropTypes.number}),
+      PropTypes.shape({top: PropTypes.number, right: PropTypes.number}),
+      PropTypes.shape({bottom: PropTypes.number, left: PropTypes.number}),
+      PropTypes.shape({bottom: PropTypes.number, right: PropTypes.number}),
+    ]),
+
+    /**
      * Enable/Disable the logo on the map.
      */
     logoEnabled: PropTypes.bool,
@@ -114,6 +124,16 @@ class MapView extends NativeBridgeComponent(React.Component) {
      * Enable/Disable the compass from appearing on the map
      */
     compassEnabled: PropTypes.bool,
+
+    /**
+     * Position the compass on a corner of the map
+     */
+    compassViewPosition: PropTypes.string,
+
+    /**
+     * Add margins to the compass with x and y values
+     */
+    compassViewMargins: PropTypes.object,
 
     /**
      * [Android only] Enable/Disable use of GLSurfaceView insted of TextureView.
